@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # NeuralDoc Application Service
+  neuraldoc-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: neuraldoc-platform
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://neuraldoc:${POSTGRES_PASSWORD:-neuraldoc123}@postgres:5432/neuraldoc_platform
+      - SESSION_SECRET=${SESSION_SECRET:-change-this-secret-in-production}
+      - PORT=5000
+    volumes:
+      - upload_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - neuraldoc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: neuraldoc-postgres
+    environment:
+      - POSTGRES_DB=neuraldoc_platform
+      - POSTGRES_USER=neuraldoc
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neuraldoc123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - neuraldoc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neuraldoc -d neuraldoc_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+  upload_data:
+    driver: local
+
+networks:
+  neuraldoc-network:
+    driver: bridge
